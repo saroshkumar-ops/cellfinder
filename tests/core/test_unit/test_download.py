@@ -17,8 +17,9 @@ def test_single_channel_model_registered():
     assert "resnet50_1ch" in download.model_hashes
     assert download.model_filenames["resnet50_1ch"].endswith(".keras")
     assert "huggingface.co" in download.model_urls["resnet50_1ch"]
-    assert "aa326ad87a43f5db6754897d9a8f491f98d862d7" in (
-        download.model_urls["resnet50_1ch"]
+    assert (
+        "aa326ad87a43f5db6754897d9a8f491f98d862d7"
+        in (download.model_urls["resnet50_1ch"])
     )
     assert download.PRETRAINED_MODELS["resnet50_1ch"].hf_repo_id == (
         "brainglobe/cellfinder_single_channel_default"
@@ -120,6 +121,23 @@ def test_download_models_gin(tmp_path, mocker):
 
     mock_fetch.assert_called_once()
     assert mock_fetch.call_args.args[0] == "resnet50_tv.h5"
+    assert result == tmp_path / "resnet50_tv.h5"
+
+
+def test_download_models_gin_http_fallback(tmp_path, mocker):
+    calls = []
+
+    def fake_fetch(filename, downloader=None, progressbar=False):
+        calls.append(filename)
+        if len(calls) == 1:
+            raise OSError("Network unreachable via HTTPS")
+        return str(tmp_path / "resnet50_tv.h5")
+
+    mocker.patch.object(pooch.Pooch, "fetch", side_effect=fake_fetch)
+
+    result = download.download_models("resnet50_tv", tmp_path)
+
+    assert len(calls) == 2
     assert result == tmp_path / "resnet50_tv.h5"
 
 
