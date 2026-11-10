@@ -223,9 +223,9 @@ def test_inference_loads_checkpoint_with_optimizer_without_warnings(tmp_path):
         for w in recorded_warnings
         if "optimizer" in str(w.message).lower()
     ]
-    assert not optimizer_warnings, (
-        f"Expected 0 warnings, got: {optimizer_warnings}"
-    )
+    assert (
+        not optimizer_warnings
+    ), f"Expected 0 warnings, got: {optimizer_warnings}"
     assert np.allclose(
         trained_model.predict(x, verbose=0),
         inference_model.predict(x, verbose=0),
