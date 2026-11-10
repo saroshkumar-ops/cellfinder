@@ -286,10 +286,7 @@ def main(
         pin_memory=pin_memory,
     )
 
-    if trained_model and (
-        str(trained_model).endswith(".weights.h5")
-        or Path(trained_model).suffix in (".h5", ".weights")
-    ):
+    if trained_model and Path(trained_model).suffix == ".h5":
         logger.warning(
             "Weights provided in place of the model, "
             "loading weights into default model."

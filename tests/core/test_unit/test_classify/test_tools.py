@@ -1,5 +1,8 @@
+import warnings
 from unittest.mock import patch
 
+import h5py
+import keras
 import numpy as np
 import pytest
 
@@ -136,21 +139,24 @@ def test_export_weights_only_missing_source_raises(tmp_path):
 
 
 def test_set_model_weights_inference_skips_optimizer_build(mocker):
-    """When inference=True, optimizer.build is skipped to avoid optimizer
-    variable mismatch warnings."""
-    mock_model = mocker.MagicMock()
-    mock_model.optimizer = mocker.MagicMock()
+    """When continue_training=False, optimizer is cleared to avoid optimizer
+    variable mismatch warnings; when True, optimizer.build is called."""
+    mock_model_inf = mocker.MagicMock()
+    mock_model_inf.optimizer = mocker.MagicMock()
 
     tools._set_model_weights(
-        mock_model, "dummy.weights.h5", continue_training=False
+        mock_model_inf, "dummy.weights.h5", continue_training=False
     )
-    mock_model.optimizer.build.assert_not_called()
-    mock_model.load_weights.assert_called_once_with("dummy.weights.h5")
+    assert mock_model_inf.optimizer is None
+    mock_model_inf.load_weights.assert_called_once_with("dummy.weights.h5")
 
+    mock_model_train = mocker.MagicMock()
+    mock_model_train.optimizer = mocker.MagicMock()
     tools._set_model_weights(
-        mock_model, "dummy.weights.h5", continue_training=True
+        mock_model_train, "dummy.weights.h5", continue_training=True
     )
-    mock_model.optimizer.build.assert_called_once()
+    mock_model_train.optimizer.build.assert_called_once()
+    mock_model_train.load_weights.assert_called_once_with("dummy.weights.h5")
 
 
 @pytest.mark.parametrize("shape", [None, (50, 50, 2)])
@@ -181,3 +187,70 @@ def test_get_model_dimension_mismatch_on_load(tmp_path):
 
     with pytest.raises(ValueError, match="expects 3D input"):
         tools.get_model(existing_model=model_path, dimensions=2)
+
+
+def test_inference_loads_checkpoint_with_optimizer_without_warnings(tmp_path):
+    """Loading a checkpoint saved with built optimizer state into an inference
+    model must NOT trigger 'Skipping variable loading' warnings.
+    """
+    inputs = keras.Input(shape=(10, 10, 1))
+    outputs = keras.layers.Dense(2)(keras.layers.Flatten()(inputs))
+    trained_model = keras.Model(inputs, outputs)
+    trained_model.compile(
+        optimizer="adam", loss="sparse_categorical_crossentropy"
+    )
+
+    x = np.random.RandomState(42).randn(4, 10, 10, 1).astype("float32")
+    y = np.array([0, 1, 0, 1])
+    trained_model.fit(x, y, epochs=1, verbose=0)
+
+    weights_path = tmp_path / "trained_with_optimizer.weights.h5"
+    trained_model.save_weights(weights_path)
+
+    inference_model = keras.Model(inputs, outputs)
+    inference_model.compile(
+        optimizer="adam", loss="sparse_categorical_crossentropy"
+    )
+
+    with warnings.catch_warnings(record=True) as recorded_warnings:
+        warnings.simplefilter("always")
+        tools._set_model_weights(
+            inference_model, weights_path, continue_training=False
+        )
+
+    optimizer_warnings = [
+        str(w.message)
+        for w in recorded_warnings
+        if "optimizer" in str(w.message).lower()
+    ]
+    assert not optimizer_warnings, (
+        f"Expected 0 warnings, got: {optimizer_warnings}"
+    )
+    assert np.allclose(
+        trained_model.predict(x, verbose=0),
+        inference_model.predict(x, verbose=0),
+    )
+
+
+def test_export_weights_only_excludes_optimizer(tmp_path):
+    """export_weights_only extracts layer variables without optimizer state."""
+    inputs = keras.Input(shape=(10, 10, 1))
+    outputs = keras.layers.Dense(2)(keras.layers.Flatten()(inputs))
+    trained_model = keras.Model(inputs, outputs)
+    trained_model.compile(
+        optimizer="adam", loss="sparse_categorical_crossentropy"
+    )
+
+    x = np.random.RandomState(42).randn(4, 10, 10, 1).astype("float32")
+    y = np.array([0, 1, 0, 1])
+    trained_model.fit(x, y, epochs=1, verbose=0)
+
+    full_model_path = tmp_path / "trained_model.keras"
+    trained_model.save(full_model_path)
+
+    exported_weights = tmp_path / "exported.weights.h5"
+    tools.export_weights_only(full_model_path, exported_weights)
+
+    with h5py.File(exported_weights, "r") as f:
+        assert "_optimizer" not in f
+        assert "optimizer" not in f

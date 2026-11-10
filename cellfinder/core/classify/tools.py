@@ -53,12 +53,14 @@ def _set_model_weights(
             "or continued training."
         )
     try:
-        if (
-            continue_training
-            and hasattr(model, "optimizer")
-            and model.optimizer is not None
-        ):
-            model.optimizer.build(model.trainable_variables)
+        if continue_training:
+            if hasattr(model, "optimizer") and model.optimizer is not None:
+                model.optimizer.build(model.trainable_variables)
+        else:
+            # During inference, the optimizer is unused. Setting it to None
+            # prevents Keras from attempting to load optimizer variables
+            # from the weights file, eliminating variable mismatch warnings.
+            model.optimizer = None
         model.load_weights(model_weights)
     except (OSError, ValueError) as e:
         raise ValueError(
@@ -93,7 +95,7 @@ def export_weights_only(
         raise FileNotFoundError(f"Source model not found: {source_path}")
 
     logger.debug(f"Loading full model from {source_path} to extract weights")
-    model = keras.models.load_model(source_path)
+    model = keras.models.load_model(source_path, compile=False)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     logger.debug(f"Saving weights-only to {target_path}")
