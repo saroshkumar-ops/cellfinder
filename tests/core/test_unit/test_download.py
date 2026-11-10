@@ -17,9 +17,8 @@ def test_single_channel_model_registered():
     assert "resnet50_1ch" in download.model_hashes
     assert download.model_filenames["resnet50_1ch"].endswith(".keras")
     assert "huggingface.co" in download.model_urls["resnet50_1ch"]
-    assert (
-        "aa326ad87a43f5db6754897d9a8f491f98d862d7"
-        in (download.model_urls["resnet50_1ch"])
+    assert "aa326ad87a43f5db6754897d9a8f491f98d862d7" in (
+        download.model_urls["resnet50_1ch"]
     )
     assert download.PRETRAINED_MODELS["resnet50_1ch"].hf_repo_id == (
         "brainglobe/cellfinder_single_channel_default"
